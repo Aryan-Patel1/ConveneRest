@@ -83,17 +83,13 @@ class ManageMutantApp():
 
     #method to import data from django model fields..
     def import_data_to_mutant(self,from_model,to_model,from_model_fields):
-        values = from_model.objects.filter(active=2)[:5000].custom_values(*from_model_fields)
-        print len(values)
+        values = from_model.objects.filter(active=2).custom_values(*from_model_fields)
         #fields name replacer function
-        if all(not d for d in values) == False:
-            from_model_fields = ManageMutantApp.list_fields_replacer(from_model_fields,[{'id':'uid'}])
-            for value in values:
-                #fill_data_query = ManageMutantApp.convert_to_query_dict(zip(from_model_fields,value))
-                to_model.model_class().objects.create(**value)
-            print("Data import successfully..")
-        else:
-            print ("No data")
+        from_model_fields = ManageMutantApp.list_fields_replacer(from_model_fields,[{'id':'uid'}])
+        for value in values:
+            fill_data_query = ManageMutantApp.convert_to_query_dict(zip(from_model_fields,value))
+            to_model.model_class().objects.create(**fill_data_query)
+        print("Data import successfully..")
 
     #method to update the data from django model fields..
     def import_new_data_to_mutant(self,from_model,to_model,from_model_fields):
@@ -135,13 +131,13 @@ class ManageMutantApp():
                          'S':BigIntegerFieldDefinition,
                          'C':BigIntegerFieldDefinition,
                          'R':BigIntegerFieldDefinition,
-                         'D':CharFieldDefinition,
+                         'D':DateTimeFieldDefinition,
                         }
 
         for question in questions:
             self.create_custom_model_fields(mdl,[{
                 q_type_helper.get(str(question.qtype)):{'name':str(question.id),
-                                'verbose_name':'{}'.format(question.text)}}])
+                                'verbose_name':'q_{}'.format(question.text)}}])
         cluster_info = self.get_cluster_info(survey_id)
         cluster_info.remove('None')
         for cluster in cluster_info:
@@ -164,41 +160,20 @@ class ManageMutantApp():
         object_name = '{}_{}'.format(str(survey).replace(' ','_'),str(survey.id)))
         cluster_info = self.get_cluster_info(survey_id)
         cluster_info.remove('None')
-        for answer in JsonAnswer.objects.filter(survey__id=survey_id,active=1):
+        for answer in JsonAnswer.objects.filter(survey__id=survey_id,active=2):
             try:
                 answer_object,created = mdl.model_class().objects.get_or_create(uid=answer.id)
-                if answer.cluster[0].get('beneficiary'):
-                    fcry_admin = str(Beneficiary.objects.get(id=answer.cluster[0].get("beneficiary").get('id')).cry_admin_id)
-                    fc_name = str(Beneficiary.objects.get(id=answer.cluster[0].get("beneficiary").get('id')).name.encode('utf-8'))
-                    partnerid = str(Beneficiary.objects.get(id=answer.cluster[0].get("beneficiary").get('id')).partner_id)
-                    partnername = str(Beneficiary.objects.get(id=answer.cluster[0].get("beneficiary").get('id')).partner.name)
-                    setattr(answer_object,'cry_admin_id',fcry_admin)
-                    setattr(answer_object,'facility_name',fc_name)
-                elif answer.cluster[0].get('facility'):
-                    fcry_admin = str(Facility.objects.get(id=answer.cluster[0].get("facility").get('id')).cry_admin_id)
-                    fc_name = str(Facility.objects.get(id=answer.cluster[0].get("facility").get('id')).name.encode('utf-8'))
-                    partnerid = str(Facility.objects.get(id=answer.cluster[0].get("facility").get('id')).partner_id)
-                    partnername = str(Facility.objects.get(id=answer.cluster[0].get("facility").get('id')).partner.name)
-                    setattr(answer_object,'cry_admin_id',fcry_admin)
-                    setattr(answer_object,'facility_name',fc_name)
                 setattr(answer_object,'created',answer.created)
                 setattr(answer_object,'modified',answer.modified)
-                if answer.cluster[0].get('facility') or answer.cluster[0].get('beneficiary'):
-                    setattr(answer_object,'partner_id',partnerid)
-                    setattr(answer_object,'partner_name',partnername)
                 for question in Question.objects.filter(active=2,block__survey__id=survey_id).order_by('code'):
                     setattr(answer_object,str(question.id),answer.response.get(str(question.id)))
                 for cluster in cluster_info:
-                    try:
-                        setattr(answer_object,str(cluster),answer.cluster[0].get(cluster).get('id'))
-                        setattr(answer_object,str(cluster)+"_type_id",
-                        answer.cluster[0].get(cluster).get(str(cluster)+'_type_id'))
-                    except:
-                        pass
+                    setattr(answer_object,str(cluster),answer.cluster[0].get(cluster).get('id'))
+                    setattr(answer_object,str(cluster)+"_type_id",
+                    answer.cluster[0].get(cluster).get(str(cluster)+'_type_id'))
                 answer_object.save()
             except Exception as e:
-                msg = str(e.message)
-                print(msg,answer.id)
+                print("Failed record: ",answer.id)
 
     #to fill the new entry records
     def import_survey_new_records(self,survey_id):
