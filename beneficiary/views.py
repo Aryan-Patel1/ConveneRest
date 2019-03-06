@@ -4,7 +4,7 @@ from rest_framework.generics import *
 from rest_framework.response import Response
 from django.contrib.contenttypes.models import ContentType
 import json
-
+from survey.models import SurveyDataEntryConfig , Question
 from .serializers import BeneficiarySerializer, BeneficiaryAddSerializer,\
             BeneficiaryModelSerializer, BeneficiaryAddressSerializer,\
             BeneficiaryRelationSerializer, BeneficiaryAddressSerializerCustom,\
@@ -468,6 +468,12 @@ class BeneficiaryTypeWiseListing(APIView):
             beneficiary_objs = Beneficiary.objects.filter(beneficiary_type_id=bid,partner__id = partner_id,active=2)
         else:
             beneficiary_objs = Beneficiary.objects.filter(beneficiary_type_id=bid, active=2)
+        if request.POST.get('name'):
+            beneficiary_objs = beneficiary_objs.filter(name__icontains=request.POST.get('name'))
+        if request.POST.get('age'):
+            beneficiary_objs = beneficiary_objs.filter(jsondata__icontains=request.POST.get('age'))
+        if request.POST.get('gender'):
+            beneficiary_objs = beneficiary_objs.filter(jsondata__icontains=request.POST.get('gender'))
         data = []
         for i in beneficiary_objs:
             age = ''
@@ -948,6 +954,20 @@ class BeneficiarySubTypeListing(CreateAPIView):
         response = {}
         response = [{'id':i.id, 'name':i.name}
             for i in BeneficiaryType.objects.filter(active=2).exclude(parent=None).order_by('id')]
+        for i in response:
+            s = SurveyDataEntryConfig.objects.filter(object_id1 = i.get('id')).values_list('survey_id')
+            q =  Question.objects.filter(active = 2 , is_profile = True)
+            qlist = [] 
+            for j in s:
+                quesid = q.filter(block__survey__id = j[0]).values_list('id')
+                if quesid:
+                    for k in quesid:
+                        qlist.append(str(k[0]))
+            i['qids'] = ','.join(qlist)
+            if i.get('id') == 2:
+                i['fields'] = ','.join(['name','age'])
+            else:
+                i['fields'] = ','.join(['name','age','gender'])
         return Response(response)
 
 class UpdateAddressType(CreateAPIView):
@@ -1060,7 +1080,6 @@ class BeneficiaryListingDateWise(CreateAPIView):
             pass
 
         partner_id = request.data.get('partner_id')
-
         date_object = convert_string_to_date(modified_on)
         if not partner_id:
             object_list_ids =[]
@@ -1068,7 +1087,16 @@ class BeneficiaryListingDateWise(CreateAPIView):
             object_list_ids = Beneficiary.objects.filter(modified__gt=date_object,partner__id=int(partner_id)).values_list('id',flat=True)
         else:
             object_list_ids = Beneficiary.objects.filter(partner__id=int(partner_id)).values_list('id',flat=True)
-        beneficiaries = Beneficiary.objects.filter(id__in=object_list_ids).order_by('modified')[:800]
+        if request.data.get('dumpdb') == 'True':
+            beneficiaries = Beneficiary.objects.filter(id__in=object_list_ids).order_by('modified')
+        else:
+            beneficiaries = Beneficiary.objects.filter(id__in=object_list_ids).order_by('modified')[:800]
+        if request.POST.get('name'):
+            beneficiaries = beneficiaries.filter(name__icontains=request.POST.get('name'))
+        if request.POST.get('age'):
+            beneficiaries = beneficiaries.filter(name__icontains=request.POST.get('age'))
+        if request.POST.get('gender'):
+            beneficiaries = beneficiaries.filter(name__icontains=request.POST.get('gender'))
         beneficiary_list = []
         exclude_fields = ['jsondata']
         all_fields = [i for i in Beneficiary._meta.get_all_field_names() if not i in exclude_fields]
@@ -1123,6 +1151,7 @@ def address_builder(address_obj):
                          'proid': str(address_obj.proof_id) if address_obj.proof else "",
                          'pri': 1 if address_obj.office == 1 else 0})
     return address_dict
+
 
 def get_updated_jsondict(obj, objdict):
     if hasattr(obj, 'jsondata'):

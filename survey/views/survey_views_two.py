@@ -32,6 +32,7 @@ import pytz
 
 class GetCluster(APIView):
     def get(self, request, survey_id, user_id):
+        import ipdb; ipdb.set_trace()
         detaileduser = None
         try:
             detaileduser = DetailedUserSurveyMap.objects.get(
@@ -93,8 +94,8 @@ class GetCluster(APIView):
 class UpdateQuestion(APIView):
     def post(self, request):
         form_data = eval(request.body)
-        question = Question.objects.get(id=form_data.get('questionId'))
-        codes = Question.objects.filter(block__survey=question.block.survey).\
+        question = Question.objects.get(id=form_data.get('questionId'),active=2)
+        codes = Question.objects.filter(block__survey=question.block.survey,active=2).\
             exclude(id=question.id).values_list('code', flat=True)
         if int(form_data.get('questionCode')) in codes:
             return Response({'status': 0, 'message': 'Code already exist'})
@@ -149,7 +150,7 @@ class GetBeneficiaryRelatedSurvey(APIView):
         dates = calling_methods.get(survey.piriodicity)
         utc=pytz.UTC
 
-        current = datetime.now().strftime('%' + str(time_delta.get(survey.piriodicity)))
+        current = datetime.datetime.now().strftime('%' + str(time_delta.get(survey.piriodicity)))
         previous = answers.created.strftime(
             '%' + str(time_delta.get(survey.piriodicity)))
         condition_list = [(int(current) == int(previous)) and (int(survey.piriodicity) <= 3),
@@ -189,7 +190,7 @@ class GetFacilityRelatedSurvey(APIView):
         answers = answers.latest('created')
         time_delta = {'0': 'd', '1': 'd', '2': 'W',
                       '3': 'm', '4': 'm', '5': 'm', '6': 'y'}
-        current = datetime.now().strftime('%' + str(time_delta.get(survey.piriodicity)))
+        current = datetime.datetime.now().strftime('%' + str(time_delta.get(survey.piriodicity)))
         previous = answers.created.strftime(
             '%' + str(time_delta.get(survey.piriodicity)))
         condition_list = [(int(current) == int(previous)) and (int(survey.piriodicity) <= 3),
@@ -243,7 +244,7 @@ class GetExtendedProfileDetails(GetBeneficiaryRelatedSurvey, GetFacilityRelatedS
                 thematic_dic['answer'] = ""
         elif epq.qtype in ['S', 'R']:
             choice_text = Choice.objects.get_or_none(
-                id=latest_response.response[str(epq.id)])
+                id=latest_response.response[str(epq.id)],active=2)
             thematic_dic['question'] = str(epq.text)
             thematic_dic['answer'] = str(choice_text.text) if choice_text else str(choice_text)
         return thematic_dic
@@ -297,7 +298,7 @@ def upper_level(required_level,present_level,upper_level_objects,boundary_object
 class GetQuestionValidation(APIView):
     def get(self, request, qid):
         try:
-            question = Question.objects.get(id=qid)
+            question = Question.objects.get(id=qid,active=2)
             try:
                 question_validation = QuestionValidation.objects.get(
                     question__id=qid)
@@ -307,7 +308,7 @@ class GetQuestionValidation(APIView):
                     'maxLength': question_validation.max_value,
                     'validationOption': question_validation.validation_type,
                     'validationMessage': question_validation.message,
-                    'question_condition':question_validation.validation_condition,
+                    'question_condition':question_validation.get_validation_condition_display(),
                     'question_validation':question.parent_id if question.validation == 11 else question.get_auto_fill_questions(),
                 }
                 return Response({'status': 2, 'validation': validation, 'question_id': qid})
@@ -330,7 +331,7 @@ class UpdateQuestionValidation(APIView):
     def post(self, request):
         constraints = eval(request.body).get('constraints')
         # update the validation for the question
-        question = Question.objects.get(id=constraints.get('questionId'))
+        question = Question.objects.get(id=constraints.get('questionId'),active=2)
         previous_validation = question.validation
         question.validation = constraints.get('questionValidation')
         question.save()
@@ -342,20 +343,22 @@ class UpdateQuestionValidation(APIView):
             qv.validation_type = constraints.get('validationOption')
             qv.message = constraints.get('validationMessage')
             qv.save()
-
+            vald_cdtn = {'greather_than':'>','less_than':'<','greather_than_equal':'>=',\
+                            'less_than_equal':'<=','equals':'==','not_equal':'!=','addition':'+',\
+                            'subtract':'-','multiple':'*','divide':'/'}
             if int(question.validation) == 11:
-		vald_cdtn = {'greather_than':'>','less_than':'<','greather_than_equal':'>=',\
-                            'less_than_equal':'<=','equals':'==','not_equal':'!='}
-                qv.validation_condition = vald_cdtn.get(constraints.get('question_condition'),'')
-                qv.save()
                 question.parent_id= int(constraints.get('question_validation'))
                 question.save()
             elif int(question.validation) in [12,13]:
 #                question.question_auto_fill.clear()
+                qv.validation_condition = vald_cdtn.get(constraints.get('question_condition'),'')
+                qv.save()
                 qustn,created = Questionautofill.objects.get_or_create(question=question)
                 qustn.question_auto_fill.clear()
+                qustn.question_sequence = ""
                 qustn.save()
                 qustn.question_auto_fill.add(*constraints.get('question_validation'))
+                qustn.question_sequence = constraints.get('question_sequence')
                 qustn.save()
                 #question.save()
     		question.save()
@@ -457,7 +460,7 @@ class ConfigSkip(APIView):
         """ API to configure skip questions """
         form = eval(request.body)
         for i in form:
-            choice = Choice.objects.get(id=i.get('id'))
+            choice = Choice.objects.get(id=i.get('id'),active=2)
             choice.skip_question.clear()
             choice.skip_question = i.get('skip_questions')
             choice.save()
@@ -484,7 +487,7 @@ class PeriodicityValidateNew(APIView):
         answers = answers.latest('created')
         time_delta = {'0': 'd', '1': 'd', '2': 'W',
                       '3': 'm', '4': 'm', '5': 'm', '6': 'y'}
-        current = datetime.now().strftime('%' + str(time_delta.get(survey.piriodicity)))
+        current = datetime.datetime.now().strftime('%' + str(time_delta.get(survey.piriodicity)))
         previous = answers.created.strftime(
             '%' + str(time_delta.get(survey.piriodicity)))
         condition_list = [(int(current) == int(previous)) and (int(survey.piriodicity) <= 3),
@@ -538,7 +541,7 @@ class GetResponse(APIView):
     def get(self, request, bid):
         wfb = WorkFlowBatch.objects.get(id=bid)
         skip_questions = list(set(Choice.objects.filter(
-            question__block__survey=wfb.current_status.survey).values_list('skip_question', flat=True)))
+            question__block__survey=wfb.current_status.survey,active=2).values_list('skip_question', flat=True)))
         skip_questions.remove(None)
         survey_questions = Question.objects.filter(active=2,block__survey=wfb.current_status.survey).exclude(
             id__in=skip_questions).values_list('id', 'text', 'qtype')[:5]
@@ -552,7 +555,7 @@ class GetResponse(APIView):
             for i in survey_questions:
                 if i[2] in ['R', 'S']:
                     get_choice = Choice.objects.get_or_none(
-                        id=j.get(str(i[0])))
+                        id=j.get(str(i[0])),active=2)
                     if get_choice:
                         one_res[i[1]] = get_choice.text
                 else:
@@ -723,11 +726,11 @@ def get_response_dict(json_answer,questions):
     one_response = []
     for ques in questions:
         if ques.qtype in ['S', 'R'] and ques.master_choice == False and json_answer.response.get(str(ques.id)):
-            choice = Choice.objects.get_or_none(id=json_answer.response.get(str(ques.id)))
+            choice = Choice.objects.get_or_none(id=json_answer.response.get(str(ques.id)),active=2)
             one_response.append((str(ques.text) ,str(choice.text) if choice else str(choice)))
         elif ques.qtype in ['C','R','S'] and ques.master_choice == True and json_answer.response.get(str(ques.id)):
             mc = str(json_answer.response.get(str(ques.id))).split(',')
-            master = MasterChoice.objects.get(question_id=ques.id)
+            master = MasterChoice.objects.get(question_id=ques.id,active=2)
             if master.master_type == "FT":
                 try:
                     ans = [i.name for i in Facility.objects.filter(Q(uuid__in=mc)|Q(cry_admin_id__in=mc)|Q(id__in=mc))]
@@ -750,7 +753,7 @@ def get_response_dict(json_answer,questions):
                 one_response.append((str(ques.text) ,ans))
         elif ques.qtype == 'C' and ques.master_choice == False and json_answer.response.get(str(ques.id)):
             mc = str(json_answer.response.get(str(ques.id))).split(',')
-            ans = [i.text for i in Choice.objects.filter(id__in=mc,question=ques)]
+            ans = [i.text for i in Choice.objects.filter(id__in=mc,question=ques,active=2)]
             if ans:
                 ans = ",".join(ans)
             else:
@@ -866,7 +869,7 @@ class FormExport(APIView):
             for q in questions:
                 if q.qtype in ['S', 'R', 'C']:
                     choice = Choice.objects.get_or_none(
-                        id=one_answer.response.get(str(q.id)))
+                        id=one_answer.response.get(str(q.id)),active=2)
                     one_response.append(str(choice.text) if choice else str(choice))
                 else:
                     one_response.append(one_answer.response.get(str(q.id)))
@@ -930,7 +933,7 @@ class GetPreviousQuestions(APIView):
 class GetQuestionDependentValue(APIView):
     def get(self,request,qid,cid):
         try:
-            p_question = Question.objects.get(id=qid).parent_id
+            p_question = Question.objects.get(id=qid,active=2).parent_id
             answer = JsonAnswer.objects.get(id=cid)
             value = answer.response.get(str(p_question))
             return Response({'status':2,'value':value})
@@ -956,10 +959,38 @@ def identify_sam_mam(child_id,height,weight):
 
 class DeactivateChoice(APIView):
     def post(self,request,cid):
-        c = Choice.objects.get(id=cid)
-        c.active=0
-        c.save()
-        return Response({'status':2,'message':'Choice deactivated...'})
+        try:
+            c = Choice.objects.get(id=cid)
+            if request.POST.get('key') == 'dec':
+                c.active=0
+                msg = 'Choice deactivated...'
+            if request.POST.get('key') == 'act':
+                c.active=2
+                msg = 'Choice Activated...'
+            c.save()
+            status = 2
+        except:
+            status = 0
+            msg = 'Something went wrong'
+        return Response({'status':status,'message':msg})
+
+
+class DeactivateQuestion(APIView):
+    def post(self,request,qid):
+        try:
+            q = Question.objects.get(id=qid)
+            if request.POST.get('key') == 'dec':
+                q.active=0
+                msg = 'Question deactivated...'
+            if request.POST.get('key') == 'act':
+                q.active=2
+                msg = 'Question Activated...'
+            q.save()
+            status = 2
+        except:
+            status = 0
+            msg = 'Something went wrong'
+        return Response({'status':status,'message':msg})
 
 
 

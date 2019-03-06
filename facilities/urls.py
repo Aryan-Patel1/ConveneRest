@@ -2,7 +2,7 @@ from django.conf.urls import url
 from rest_framework.urlpatterns import format_suffix_patterns
 from .views import FacilityAdd, FacilityTypeListing, FacilityDetail, FacilityUpdate, \
                     FacilitySubTypeListing, FacilityListing, ThematicAreaListing, \
-                    FacilityWtPaginationListing
+                    FacilityWtPaginationListing,FacilityTypeList
 
 urlpatterns = [
     url(r'^facilityadd/$', FacilityAdd.as_view(), {'key':'facility'}),
@@ -13,6 +13,7 @@ urlpatterns = [
     url(r'^facilityupdate/$', FacilityUpdate.as_view(), {'key':'facility'}),
     url(r'^facilitylisting/$', FacilityListing.as_view(), {'key':'facility'}),
     url(r'^facilitydatewiselisting/$', FacilityWtPaginationListing.as_view(), {'key':'facility'}),
+    url(r'^facilitytypelisting/$', FacilityTypeList.as_view()),
 
 #    url(r'^facilitycenteradd/$', FacilityCentreAdd.as_view()),
 #    url(r'^facilitycenterupdate/$', FacilityCentreUpdate.as_view()),

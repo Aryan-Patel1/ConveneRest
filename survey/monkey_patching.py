@@ -135,8 +135,14 @@ def get_question_validation(self):
             qv = str(qv_obj.validation_type)+":M:"+str(qv_obj.min_value)+":"+str(qv_obj.max_value)+":"+qv_obj.message
         elif self.validation == 7:
             qv = str(qv_obj.validation_type)+":LN:"+str(qv_obj.min_value)+":"+str(qv_obj.max_value)+":"+qv_obj.message
-        elif self.validation == 8:
+        elif self.validation == 8 and qv_obj.validation_condition not in ['past','current','future','any']:
             qv = str(qv_obj.validation_type)+":D:dd/mm/yyyy:"+str(qv_obj.min_value)+":"+str(qv_obj.max_value)+":"+qv_obj.message
+        elif self.validation == 8 and qv_obj.validation_condition == 'past':
+            qv = "R"+":D:dd/mm/yyyy:"+"01011900"+":"+"00000000"+":"+qv_obj.message
+        elif self.validation == 8 and qv_obj.validation_condition == 'current':
+            qv = "R"+":D:dd/mm/yyyy:"+"00000000"+":"+"00000000"+":"+qv_obj.message
+        elif self.validation == 8 and qv_obj.validation_condition == 'future':
+            qv = "R"+":D:dd/mm/yyyy:"+"00000000"+":"+"31122030"+":"+qv_obj.message
         elif self.validation == 9:
             qv = str(qv_obj.validation_type)+":T:ISO:HH-mm-ss:"+str(qv_obj.min_value)+":"+str(qv_obj.max_value)+":"+qv_obj.message
     elif self.qtype in ['E'] and qv_obj:

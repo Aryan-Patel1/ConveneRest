@@ -11,7 +11,7 @@ from .views import (
     PartnerProjectLocationEdit, ProjectHolderEdit,
     AllModuleActions, ProjectLocationDetail, PartnerEmployee,
     PartnerEmployeeListing,StateRelatedPartner,CreatePartnerUserInfo,PartnerDatabase,
-    PartnerUserInfoDetail,PartnerUserInfoList)
+    PartnerUserInfoDetail,PartnerUserInfoList,NatureOfPartnerList)
 from .dpf_view import (
     DonarCreate, DonarDetailView, DonarListing, GetDateToYear, GetThematic,
     ItemLineChecker,
@@ -83,4 +83,10 @@ urlpatterns = [
     #url(r'^partner-database/$',PartnerDatabase.as_view()),
     url(r'^partner-database/$','partner.views.PartnerDatabase'),
     url(r'^create-partner-database/$',export_db),
+    url(r'^nature-list/$',NatureOfPartnerList.as_view()),
+    url(r'^test/(?P<userid>[0-9]+)/$', export_db),
 ]
+
+
+
+

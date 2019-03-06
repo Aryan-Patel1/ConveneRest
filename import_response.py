@@ -3,8 +3,9 @@ import csv
 from survey.models import *
 from beneficiary.models import *
 from facilities.models import *
+from datetime import datetime
 
-
+tod = datetime.today()
 #usr = User.objects.get(id=1)
 #[{"beneficiary": {"id": 2338, "beneficiary_type_id": 2}}]
 #[{"boundary": {"boundary_type_id": 0, "id": 1136}}]
@@ -36,15 +37,19 @@ def import_facility_survey_data(file_path,survey_id):
 
 def import_beneficiary_survey_data(file_path,survey_id):
     csv_reader = csv.DictReader(open(file_path,"r"))
+    missed_data = []
     for i in csv_reader:
         if Beneficiary.objects.filter(cry_admin_id=i.get("BeneficCode")).count() == 1:
             fac = Beneficiary.objects.get(cry_admin_id=i.get("BeneficCode"))
             cluster_info = [{"beneficiary":{"id":fac.id,"beneficiary_type_id":fac.beneficiary_type_id}}]
             resp_dict = i
             del resp_dict['BeneficCode']
+            usr = User.objects.get(id=1)
             obj = JsonAnswer.objects.create(user=usr,survey_id=survey_id, cluster=cluster_info, response=resp_dict, active=1, interface=2)
         else:
+            missed_data.append({"ben":i.get("BeneficCode"),"response":i})
             print i.get("BeneficCode")
+    print missed_data,JsonAnswer.objects.filter(survey_id=survey_id,active=1).count()
 
 
 def ques_impo():
@@ -61,7 +66,7 @@ def ques_impo():
                 if blk.keys():
                     for k,v in blk.items():
                         try:
-                            q.language_code[k]=v
+                            q.language_code[k]=str(q.text) + " - " + v
                             q.save()
                             print str(q.id) + "-"+ "imported"
                         except Exception as e:
@@ -87,7 +92,7 @@ def choice_impo():
                 if blk.keys():
                     for k,v in blk.items():
                         try:
-                            q.language_code[k]=v
+                            q.language_code[k]=str(q.text) + " - " + v
                             q.save()
                             print str(q.id) + "-"+ "imported"
                         except Exception as e:
@@ -208,4 +213,64 @@ def house_data():
             print i.cluster,count
             spamwriter.writerow(ansrow)
         print "created"
+
+
+
+
+#Export Qustion
+def export_questionlist():
+    with open('Question_list'+str(tod.date())+'.csv','wb') as csvfile:
+        spamwriter = csv.writer(csvfile)
+        qids = ["Form Id","Form Name","Question Id","Question Name","Question Type","Question Acitve Status","Telugu","Hindi","Tamil","Kannada","Bangla","Odiya","Assamese - Ahomia"]
+        spamwriter.writerow(qids)
+        count = 0
+        for i in Question.objects.all().order_by('id'):
+            spamwriter.writerow([
+                smart_str(i.block.survey.id),
+                smart_str(i.block.survey.name),
+                smart_str(i.id),
+                smart_str(i.text),
+                smart_str(i.qtype),
+                smart_str(i.active),
+                smart_str(i.language_code.get('2','')),
+                smart_str(i.language_code.get('3','')),
+                smart_str(i.language_code.get('4','')),
+                smart_str(i.language_code.get('5','')),
+                smart_str(i.language_code.get('6','')),
+                smart_str(i.language_code.get('7','')),
+                smart_str(i.language_code.get('8','')),
+                smart_str(i.language_code.get('9','')),
+                smart_str(i.language_code.get('10',''))
+                ])
+        print "Question Exported"
+
+
+def export_choicelist():
+    with open('Choice_list'+str(tod.date())+'.csv','wb') as csvfile:
+        spamwriter = csv.writer(csvfile)
+        qids = ["Form Id","Form Name","Question Id","Question Name","Question Type","Question Active Status","Choice Id","Choice Text","Choice Active Status","Telugu","Hindi","Tamil","Kannada","Bangla","Odiya","Assamese - Ahomia"]
+        spamwriter.writerow(qids)
+        count = 0
+        for i in Choice.objects.all().order_by('id'):
+            spamwriter.writerow([
+                smart_str(i.question.block.survey.id),
+                smart_str(i.question.block.survey.name),
+                smart_str(i.question.id),
+                smart_str(i.question.text),
+                smart_str(i.question.qtype),
+                smart_str(i.question.active),
+                smart_str(i.id),
+                smart_str(i.text),
+                smart_str(i.active),
+                smart_str(i.language_code.get('2','')),
+                smart_str(i.language_code.get('3','')),
+                smart_str(i.language_code.get('4','')),
+                smart_str(i.language_code.get('5','')),
+                smart_str(i.language_code.get('6','')),
+                smart_str(i.language_code.get('7','')),
+                smart_str(i.language_code.get('8','')),
+                smart_str(i.language_code.get('9','')),
+                smart_str(i.language_code.get('10',''))
+                ])
+        print "Choice Exported"
 

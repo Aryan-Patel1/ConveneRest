@@ -172,6 +172,7 @@ class ManageMutantApp():
                     setattr(answer_object,str(cluster)+"_type_id",
                     answer.cluster[0].get(cluster).get(str(cluster)+'_type_id'))
                 answer_object.save()
+		print ('Imported',answer_object.id)
             except Exception as e:
                 print("Failed record: ",answer.id)
 

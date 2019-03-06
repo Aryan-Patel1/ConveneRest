@@ -9,7 +9,7 @@ from django.db import transaction
 from masterdata.models import *
 from django.core.mail import send_mail
 from beneficiary.models import BeneficiaryType
-import os,sys
+import os,sys,json
 import pytz
 from ccd.settings import HOST_URL
 from django.contrib.auth.models import User
@@ -107,6 +107,7 @@ def get_user_partner(userrole_obj):
 @csrf_exempt
 def surveylist(request):
     if request.method == 'POST':
+     #  import ipdb; ipdb.set_trace()
         user_id = request.POST.get("uId")
         if not user_id.isdigit() or user_id == '':
             res = {"status":0, \
@@ -682,7 +683,9 @@ def get_latest_survey_versions(user_id):
                                     'q_config': 2,
                                     'survey_order':survey_order,
                                     'rule_engine':str({'isAutoFill':exp_val.get(survey_object.is_auto_fill),
-                                                   'questionsToAutofill':survey_object.get_periodic_questions()}),
+                                                   'questionsToAutofill':survey_object.get_periodic_questions(),
+                                                   'survey_json': eval(json.dumps(survey_object.get_survey_rule_engine()))
+                                                   }),
                                     'reasonDisagree': 3,
                                     'survey_name':survey_name,
                                     'order_levels':str(levellist),

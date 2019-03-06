@@ -43,5 +43,6 @@ urlpatterns = [
     url(r'^livesearchbeneficiary/$', RetreiveLiveParentsListing.as_view()),
     url(r'^addressproof/masterlisting/$', GenericListing.as_view(), {'slug':'addressproof'}),
     url(r'^mother-list/$', HouseholdMotherListing.as_view()),
+
 ]
 

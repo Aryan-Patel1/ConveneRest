@@ -65,3 +65,5 @@ class HouseholdMotherListing(APIView):
         mother_list = Beneficiary.objects.filter(active=2,beneficiary_type__id=3,
                       parent_id=household_id).values('uuid','name')
         return Response({'status':2,'mother_list':mother_list})
+        
+

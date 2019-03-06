@@ -1,7 +1,7 @@
 from __future__ import unicode_literals
 
 from django.db import models
-
+import datetime
 from beneficiary.models import *
 from partner.models import *
 from masterdata.models import *
@@ -114,6 +114,26 @@ class AggregateReportConfig(BaseContent):
     model_config = JSONField()
     survey_config = JSONField()
     mutant_app_table = models.ForeignKey(ContentType,blank=True,null=True)
-
+    custom_sqlquery_config = JSONField(blank=True,null=True)
+    udf1 = models.PositiveIntegerField(default=0)
+    udf2 = models.PositiveIntegerField(default=0)
+    udf3 = models.PositiveIntegerField(default=0)
+    
+    
     def __unicode__(self):
         return str(self.report_name)
+
+
+class ProfileView(BaseContent):
+    """A model which will store all profile question related information"""
+    jsonid = models.PositiveIntegerField(default = 0)
+    uuid_lid = models.CharField(max_length=500, blank=True, null=True)
+    type_name = models.CharField(max_length=500, blank=True, null=True)
+    type_id = models.PositiveIntegerField(default=0)
+    ben_fac_loc_id = models.PositiveIntegerField(default=0)
+    profile_info = JSONField()
+    partner_id = models.PositiveIntegerField(default=0)
+
+    
+    def __unicode__(self):
+        return str(self.type_name)

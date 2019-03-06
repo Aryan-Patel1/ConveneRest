@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render,HttpResponse,HttpResponseRedirect
 from survey.models import Survey,Block,Question,Choice,JsonAnswer
 from userroles.models import UserRoles
 from beneficiary.models import Beneficiary,BeneficiaryType
@@ -14,6 +14,11 @@ from django.apps import apps
 from math import ceil
 from masterdata.views import CustomPagination
 from common_methods import *
+import psycopg2
+from django.http import JsonResponse
+from django.db import connection
+from django.utils.encoding import smart_str
+import csv
 
 # Create your views here.
 
@@ -131,6 +136,7 @@ class MutantReportFilterView(APIView):
     def get(self,request,uid):
         try:
             usr = UserRoles.objects.get(user_id=uid)
+            menus = []
             if usr.user.is_superuser and not request.GET.get('pid'):
                 b = Boundary.objects.filter(active=2).values_list('region_id',flat=True)
                 rgn = [{"id":str(rg.id),"name":str(rg.name)} for rg in MasterLookUp.objects.filter(id__in=b,active=2)]
@@ -154,13 +160,16 @@ class MutantReportFilterView(APIView):
                 autopop = "True"
                 msg = "Success"
                 status = 2
+            if request.GET.get('menu'):
+                menus = Menus.objects.filter(parent__slug=request.GET.get('menu'),active=1).order_by('name').values('id','name','slug')
         except Exception as e:
             rgn = []
             part=stat=rgn
             autopop = "False"
             msg = str(e.message)
             status = 0
-        res = {"region":rgn,"state":stat,"partner":part,"autopop":autopop,"message":msg,"status":status}
+            menus = []
+        res = {"region":rgn,"state":stat,"partner":part,"autopop":autopop,"message":msg,"status":status,"menus":menus}
         return Response(res)
 
 
@@ -168,13 +177,13 @@ class RegoinStateView(APIView):
     def get(self,request,uid,rgid):
         try:
             usr = UserRoles.objects.get(user_id=uid)
-            stat = [{"id":str(rg.id),"name":str(rg.name)} for rg in Boundary.objects.filter(active=2,boundary_level=2,region_id=rgid)]
+            stat = [{"id":str(rg.id),"name":str(rg.name)} for rg in Boundary.objects.filter(active=2,boundary_level=2,region__id__in=eval(rgid))]
             msg = "Success"
             status = 2
         except Exception as e:
-            stat = []
-            msg = str(e.message)
-            status = 0
+            stat = [{"id":str(rg.id),"name":str(rg.name)} for rg in Boundary.objects.filter(active=2,boundary_level=2)]
+            msg = "Success"
+            status = 2
         res = {"state":stat,"message":msg,"status":status}
         return Response(res)
 
@@ -183,7 +192,7 @@ class StatePartnerView(APIView):
     def get(self,request,uid,pid):
         try:
             usr = UserRoles.objects.get(user_id=uid)
-            part = [{"id":str(rg.id),"name":str(rg.name)} for rg in Partner.objects.filter(active=2,state_id=pid)]
+            part = [{"id":str(rg.id),"name":str(rg.name)} for rg in Partner.objects.filter(active=2,state__id__in=eval(pid))]
             msg = "Success"
             status = 2
         except Exception as e:
@@ -192,3 +201,62 @@ class StatePartnerView(APIView):
             status = 0
         res = {"partner":part,"message":msg,"status":status}
         return Response(res)
+
+from ccd.settings import DATABASES
+def famly_info(sql):
+    conn = psycopg2.connect(database=DATABASES.get('default').get('NAME'),user=DATABASES.get('default').get('USER'),password=DATABASES.get('default').get('PASSWORD'),host=DATABASES.get('default').get('HOST'))#ccd_demo29oct
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    nofam = cursor.fetchall()
+    conn.close()
+    return nofam
+
+
+def custom_reports_listing(request):
+    obj = AggregateReportConfig.objects.get(report_name='Custom Reports',udf1=1)
+    display_headers = obj.custom_sqlquery_config.get(request.GET.get('table')).get('display_headers')
+    offset = int(request.GET.get('page'))-1 if request.GET.get('page') else 0
+    WHERE_CLAUSE = " limit 10 offset "+str(offset * 10)
+    if request.GET.get('part'):
+        qmnth = request.GET.get('qid')
+        qyr = request.GET.get('yid')
+#        fcn_yr = get_fincal_yr(qmnth,qyr)
+#        WHERE_CLAUSE = " where cast(partner_id as int) = "+request.GET.get('part')+" and period = "+str(fcn_yr)+" limit 10 offset "+str(offset * 10)
+        if len(eval(request.GET.get('part'))) > 1:
+            part = eval(request.GET.get('part'))
+            part = str(tuple(part))
+            WHERE_CLAUSE = " where cast(partner_id as int) in "+part+" limit 10 offset "+str(offset * 10)
+            data_count = len(famly_info(obj.custom_sqlquery_config.get(request.GET.get('table')).get('sql_query')+" where cast(partner_id as int) in "+part))
+        else:
+            part = str(eval(request.GET.get('part'))[0])
+            WHERE_CLAUSE = " where cast(partner_id as int) in ("+part+") limit 10 offset "+str(offset * 10)
+            data_count = len(famly_info(obj.custom_sqlquery_config.get(request.GET.get('table')).get('sql_query')+" where cast(partner_id as int) in ("+part+")"))
+    data = famly_info(obj.custom_sqlquery_config.get(request.GET.get('table')).get('sql_query')+WHERE_CLAUSE)
+    
+    return JsonResponse({'status':200,'display_headers':display_headers,'data':data,'message':'Successfully Retreieved',\
+                        'page':request.GET.get('page'),'count':data_count})
+
+
+
+def export_custom_reports(request):
+    obj = AggregateReportConfig.objects.get(report_name='Custom Reports',udf1=1)
+    display_headers = obj.custom_sqlquery_config.get(request.GET.get('table')).get('display_headers')
+    offset = int(request.GET.get('page'))-1 if request.GET.get('page') else 0
+    WHERE_CLAUSE = ""
+    if len(eval(request.GET.get('part'))) > 1:
+        part = eval(request.GET.get('part'))
+        part = str(tuple(part))
+        WHERE_CLAUSE = " where cast(partner_id as int) in "+part
+    else:
+        part = str(eval(request.GET.get('part'))[0])
+        WHERE_CLAUSE = " where cast(partner_id as int) in ("+part+")"
+    data = famly_info(obj.custom_sqlquery_config.get(request.GET.get('table')).get('sql_query')+WHERE_CLAUSE)
+    export_data = request.GET.get('table')
+    export_file = open(BASE_DIR+"/static/response_csv/"+export_data+".csv", 'w')
+    export_writer = csv.writer(export_file)
+    export_writer.writerow(display_headers)
+    for k in data:
+        export_writer.writerow(k)
+    file_name = str(export_file.name).split('/')[-1]
+    return JsonResponse({'status':2,'download':HOST_URL+'/static/response_csv/'+file_name})
+

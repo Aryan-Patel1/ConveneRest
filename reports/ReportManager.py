@@ -222,8 +222,10 @@ class ReportManager():
         if request.GET.get('pid') and request.GET.get('qid') and request.GET.get('yid'):
             qmnth = request.GET.get('qid')
             qyr = request.GET.get('yid')
-            fcn_yr = get_fincal_yr(qmnth,qyr)
-            data = data.filter(partner_id=request.GET.get('pid'),financial_month_year=fcn_yr)
+#            fcn_yr = get_fincal_yr(qmnth,qyr)
+            #data = data.filter(partner_id__in=eval(request.GET.get('pid')),financial_month_year=fcn_yr)
+            data = data.filter(partner_id__in=eval(request.GET.get('pid')))
+
     
         for d in data:
             for k in d.keys():

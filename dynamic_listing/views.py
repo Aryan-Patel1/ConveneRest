@@ -355,6 +355,7 @@ class ModelFilterResult(APIView):
                 except:
                     fields_dict = {}
                     [fields_dict.update({field.name: field.verbose_name}) for field in model.model_class()._meta.get_fields() if field.name in fields_list]
+                    fields_dict = [field.name for field in model.model_class()._meta.get_fields() if field.name in fields_list]
                     res= model.model_class().objects.filter(*conditional_query,**filter_query).exclude(**exclude_criteria).order_by(*order_condition).values(*fields_list)
                     headers = fields_dict
             data = res

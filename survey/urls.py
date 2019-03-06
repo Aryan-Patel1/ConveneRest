@@ -8,7 +8,7 @@ QuestionCreate, AnswerValidator, SaveAnswer, SurveyResponses, SurveyList,
 ResponseView, SurveyBlockList, GetSurveyQuestions, CreateQuestion,
 GetBlockQuestions, GetQuestionDetail, GetQuestionOptions, UpdateAnswer,
 CreateQuestionOptions, GetOption, DeoList, UserSurveyMap, GetUserSurveyMap,
-GetFaciltyTypes, GetLocationTypes, CreateSurvey, GetDataEntryLevels,GetUserPartner,MasterChoiceSearch, )
+GetFaciltyTypes, GetLocationTypes, CreateSurvey, GetDataEntryLevels,GetUserPartner,MasterChoiceSearch, ProfileViewWebApp , profileViewAndroidApp )
 
 from .views.survey_views_two import (GetCluster,UpdateQuestion,
 GetExtendedProfileDetails,GetBoundaryLevelData,GetQuestionValidation,
@@ -19,7 +19,7 @@ CreatePartnerExtension,PartnerExtensionDetail,PartnerExtensionUpdate,
 SurveyPartnerExtensionListing,GetFilterRelatedSurvey,GetResponseDraftView,
 GetRegionalStates,AutoQuestionCode,LanguageList,BatchPivotView,StatePartnerList,
 FormExport,GetRegionalTranslations,RegionalTranslations,GetPreviousQuestions,
-GetQuestionDependentValue,DeactivateChoice,MutantSurveyReportExport,)
+GetQuestionDependentValue,DeactivateChoice,MutantSurveyReportExport,DeactivateQuestion)
 
 urlpatterns = patterns('',
                        url(r'^app-login/$', 'survey.api_views.applogin',
@@ -195,7 +195,9 @@ urlpatterns += patterns(
     url(r'^get-previous-questions/(?P<qcode>.+)/(?P<sid>.+)/$',GetPreviousQuestions.as_view()),
     url(r'^question-dependent-value/(?P<qid>.+)/(?P<cid>.+)/$',GetQuestionDependentValue.as_view()),
     url(r'^deactivate-choice/(?P<cid>.+)/$',DeactivateChoice.as_view()),
+    url(r'^deactivate-question/(?P<qid>.+)/$',DeactivateQuestion.as_view()),
     url(r'^master-choice/$',MasterChoiceSearch.as_view()),
     url(r'^export-mutant-form-responses/(?P<form_id>.+)/(?P<user_id>.+)/(?P<table>.+)/$',MutantSurveyReportExport.as_view()),
-
+    url(r'^submitted_response_list/(?P<cluster>.+)/$' , ProfileViewWebApp.as_view()),
+    url(r'^submitted_response_list_android/$' , profileViewAndroidApp.as_view()),
 )

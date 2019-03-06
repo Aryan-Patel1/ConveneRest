@@ -76,7 +76,12 @@ class RolesListAPI(APIView):
                         for i in roles]
             paginator = CustomPagination()
             result_page = paginator.paginate_queryset(response, request, pages)
-            return paginator.get_paginated_response(result_page, pages, 1)
+            if request.GET.get('key')=="all":
+                response = [{'objlist':response,"pagex":"","previous":"","count":len(response),"next":""}]
+                return Response(response)
+            else:
+                print pages
+                return paginator.get_paginated_response(result_page, pages, 1)
         except Exception as e:
             response = [{'msg': e.message, 'status': 0, 'pages': 1}]
         return Response(response)

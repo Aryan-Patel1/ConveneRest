@@ -1,9 +1,9 @@
 from uuid import uuid4
 import calendar
-import datetime
+#import datetime
 from math import ceil
 from masterdata.views import CustomPagination
-from datetime import date, timedelta
+from datetime import date, timedelta 
 from django.shortcuts import render
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from django.apps import apps
 from django.http import JsonResponse
 from survey.serializers import *
+from reports.serializers import *
 from survey.models import *
 from userroles.models import UserRoles,UserPartnerMapping
 from masterdata.models import (MasterLookUp, Boundary, DocumentCategory)
@@ -25,10 +26,15 @@ from box import Box
 from .custom_dates import CustomDates
 from ccd.settings import FY_YEAR
 import sys
+import psycopg2
+import datetime
+from beneficiary.views import *
+from reports.models import ProfileView
 # Create your views here.
 
 
 class SurveyList(generics.ListCreateAPIView):
+    
     queryset = Survey.objects.all()
     serializer_class = SurveySerializer
 
@@ -87,7 +93,7 @@ class QuestionList(APIView):
         if survey.is_skip_survey() and int(block_id) > 0:
             survey_blocks = survey_blocks.filter(id__gte=block_id)
             next_ques = Question.objects.get(
-                id=skip).get_next_set_question(choice)
+                id=skip,active=2).get_next_set_question(choice)
             skip_code['code__gte'] = next_ques.get('first').code
             skip_code['code__lte'] = next_ques.get('last').code
             res['skipping_question'] = next_ques.get('last').id
@@ -133,9 +139,9 @@ class QuestionList(APIView):
                 q_validation = QuestionValidation.objects.get_or_none(question=question)
                 question_dict = {"questionType": question.qtype,
                                  "questionMandatory": str(question.mandatory),
-                                 "questionLabel": question.question_text_lang(lid), "questionId": question.id,
+                                 "questionLabel": question.question_text_lang(lid.strip('/')), "questionId": question.id,
                                  "questionError": "", "questionAnswer": QuestionList.question_answer_filler(question,resp,survey_other),#resp.response.get(str(question.id)) if question.display and resp else "",
-                                 "questionChoice": question.choice_list(partner_id,1),
+                                 "questionChoice": question.choice_list(partner_id,lid.strip('/')),
                                  "mchoice":str(question.master_choice),
                                  }
                 try:
@@ -198,11 +204,10 @@ class AnswerValidator(APIView):
                             elif quest.get('questionType') == 'D':
                                 date = ''
                                 try:
-                                    date = datetime.strptime(quest.
-                                                             get('questionAnswer'), '%Y-%m-%d')
+                                    date = datetime.datetime.strptime(quest.get('questionAnswer'), '%Y-%m-%d').date()
                                 except:
                                     pass
-                                if not isinstance(date, datetime):
+                                if not isinstance(date, date):
                                     quest['questionError'] = 'This field should be datetime'
                                     status = 0
                             elif (quest.get('questionType') == 'S' or quest.get('questionType') == 'R') and not quest.get('questionAnswer') :
@@ -236,7 +241,8 @@ class SaveAnswer(APIView):
         survey_level = eval(str(request_body)).get('formLevel')
         response_blocks = eval(str(request_body)).get('blocks')
         cluster = eval(str(request_body)).get('cluster')
-
+        periodicity_value = get_piriodicity_value(survey_id)
+        cluster.append({'periodicity_value' : periodicity_value})
         status = 2
         msg = "Response Created Successfully"
         current_block = None
@@ -260,7 +266,7 @@ class SaveAnswer(APIView):
 
         elif survey_partner_extension:
             # for partner extension
-            create_back_date = [get_last_periodicity_date(survey_id) + timedelta(days=int(survey_partner_extension.expiry_age)) >= datetime.now(),
+            create_back_date = [get_last_periodicity_date(survey_id) + timedelta(days=int(survey_partner_extension.expiry_age)) >= datetime.datetime.now(),
             check_if_previous_is_empty(survey_id, cluster_type, cluster[0][cluster_type].get('id')),
             user_partner.id and survey_partner_extension,
             int(user_partner.id) in survey_partner_extension.partner.all().ids()
@@ -329,7 +335,7 @@ class SaveAnswer(APIView):
             if eval(str(eval(request_body).get('is_skip'))):
                 if eval(request_body).get('skipping_question') > 0:
                     skip_question = Question.objects.get(
-                        id=eval(request_body).get('skipping_question'))
+                        id=eval(request_body).get('skipping_question'),active=2)
                     skip_details = json_answer.response.get(skip_question.id)
                     if skip_question.is_survey_end_question():
                         res['next_block'] = 0
@@ -350,7 +356,30 @@ class SaveAnswer(APIView):
                         res['choice'] = 0
             res['creation_key'] = str(creation_key) + '_' + str(json_answer.id)
             return Response(res)
+        
 
+
+def get_piriodicity_value(survey_id):
+        from datetime import datetime
+        d = datetime.now()
+        if (d.month-1)//3:
+            fy = d.strftime('%b') + '-' + str(d.year)
+            qy = 'Q'+ str((d.month-1)//3) + '-' + str(d.year)
+        else:
+            fy = d.strftime('%b') + '-' + str(d.year-1)
+            qy = 'Q'+ str((d.month-1)//3 + 4) + '-' + str(d.year-1)
+        
+        s = Survey.objects.get(id = survey_id).get_piriodicity_display()
+        if s == 'Quarterly':
+            return qy
+        elif s == 'Yearly':
+            return fy.split('-')[1]
+        elif s == 'Monthly':
+            return fy
+
+
+
+            
 class UpdateAnswer(APIView):
 
     def post(self, request):
@@ -415,7 +444,7 @@ class UpdateAnswer(APIView):
         res['language_id'] = language_id
         if eval(str(eval(request_body).get('is_skip'))) and eval(request_body).get('skipping_question') > 0:
             skip_question = Question.objects.get(
-                id=eval(request_body).get('skipping_question'))
+                id=eval(request_body).get('skipping_question'),active=2)
 
             skip_details = json_answer.response.get(str(skip_question.id))
             if skip_question.is_survey_end_question():
@@ -537,11 +566,15 @@ class SurveyResponses(APIView):
 class SurveyList(APIView):
 
     def get(self, request, user_id):
-        survey_list = Survey.objects.filter(active=2).order_by('order').values('id', 'name')
-        for n, i in enumerate(survey_list):
-            survey_list[n]['edit'] = {True: False, False: True}[
-                Survey.objects.get(id=i.get('id')).has_answers()]
-        return Response({'status': 2, 'survey_list': survey_list})
+        survey_list = Survey.objects.select_related('data_entry_level__name').filter(active=2).order_by('order')
+        data = [{'edit' : i.has_answers(),
+                     'id' : i.id,
+                     'name' : i.name,
+                     'periodicity' : i.get_piriodicity_display(),
+                     'form_level' : i.data_entry_level.name,
+        }
+        for i in survey_list]
+        return Response({'status': 2, 'survey_list': data})
 
     def get_user_roles(self, user_id):
         user = User.objects.get(id=user_id)
@@ -675,7 +708,7 @@ class ResponseView(APIView):
             if survey.is_skip_survey() and int(block_id) > 0:
                 survey_blocks = survey_blocks.filter(id__gte=block_id)
                 next_ques = Question.objects.get(
-                    id=skip).get_next_set_question(choice)
+                    id=skip,active=2).get_next_set_question(choice)
                 skip_code['code__gte'] = next_ques.get('first').code
                 skip_code['code__lte'] = next_ques.get('last').code
                 res['skipping_question'] = next_ques.get('last').id
@@ -695,10 +728,10 @@ class ResponseView(APIView):
                     ans = ""
                     q_validation = QuestionValidation.objects.get_or_none(question=question)
                     try:
-                        if question.qtype == 'T':
+                        if question.qtype == 'T' and question.master_choice == False :
                             ans = answers.response.get(str(question.id))
 
-                        elif question.qtype in ['C','R','S'] and question.master_choice == True:
+                        elif question.qtype in ['C','R','S','T'] and question.master_choice == True:
                             mc = str(answers.response.get(str(question.id))).split(',')
                             master = MasterChoice.objects.get(question_id=question.id)
                             if master.master_type == "FT":
@@ -785,22 +818,37 @@ class CreateQuestion(APIView):
                 MasterChoice.objects.create(question=q,
                                             master_type=form_data.get('categoryType')[0].get('type'),
                                             code=form_data.get('categoryType')[0].get('id'))
-            if form_data.get('questionType') == 'T' and q.validation != 4:
+            if form_data.get('questionType') == 'T' and q.validation != 4  and eval(form_data.get('masterProfile')) == False:
                 constraints = form_data.get('constraints')
-                QuestionValidation.objects.create(question=q,
+                vald_cdtn = {'greather_than':'>','less_than':'<','greather_than_equal':'>=',\
+                            'less_than_equal':'<=','equals':'==','not_equal':'!=','addition':'+',\
+                            'subtract':'-','multiple':'*','divide':'/'}
+                qv = QuestionValidation.objects.get_or_create(question=q,
                     min_value=constraints.get('minLength'),
                     max_value=constraints.get('maxLength'),
                     validation_type=constraints.get('validationOption'),
                     message=constraints.get('validationMessage'),
-                    validation_condition=constraints.get('question_condition'))
+#                    validation_condition=constraints.get('question_condition'))
+                    validation_condition=vald_cdtn.get(constraints.get('question_condition')))
                 if int(q.validation) == 11:
+                    qv.validation_condition = vald_cdtn.get(constraints.get('question_condition'))
+                    qv.save()
                     q.parent_id = int(constraints.get('question_validation'))
                     q.save()
                 elif int(q.validation) in [12,13]:
-                    qustn = Questionautofill.objects.get_or_create(question=q)
+                    qustn,created = Questionautofill.objects.get_or_create(question=q)
+                    qustn.question_auto_fill.clear()
+                    qustn.save()
                     qustn.question_auto_fill.add(*constraints.get('question_validation'))
+                    qustn.question_sequence = constraints.get('question_sequence')
                     qustn.save()
                     q.save()
+            if form_data.get('questionType') == 'D' and q.validation == "8":
+                constraints = form_data.get('constraints')
+                QuestionValidation.objects.create(question=q,min_value=constraints.get('minDate'),\
+                max_value=constraints.get('maxDate'),message=constraints.get('validationMessage'),\
+                validation_condition=constraints.get('question_condition'))
+                q.save()
             return Response({'status': status, 'msg': 'Question created Successfully','parent_id':q.parent_id,'id':q.id})
         except Exception as e:
             status = 0
@@ -824,8 +872,8 @@ class GetBlockQuestions(APIView):
         block = None
         try:
             block = Block.objects.get(id=int(request.data.get('block_id')))
-            questions = Question.objects.filter(active=2, block=block).order_by('code').values(
-                'id', 'text', 'qtype', 'validation', 'code', 'mandatory', 'is_profile','master_choice')
+            questions = Question.objects.filter(block=block).order_by('code').values(
+                'id', 'text', 'qtype', 'validation', 'code', 'mandatory', 'is_profile','master_choice','active')
         except Exception as e:
             status = 0
             return Response({'status': status, 'msg': 'Error while fetching questions', 'traceback_error': e.message})
@@ -849,7 +897,7 @@ class GetSurveyQuestions(APIView):
         status = 2
         try:
             survey = Survey.objects.get(id=sid)
-            questions = Question.objects.filter(block__survey=survey).values('id', 'text')
+            questions = Question.objects.filter(block__survey=survey,active=2).values('id', 'text')
             maincategory = [{"BF":"Beneficiary","FT":"Facility"}] ## capture type of beneficairy in question - from (added newly)
             subcategory = []
             subs = {}
@@ -871,7 +919,7 @@ class GetQuestionDetail(APIView):
 
         status = 2
         try:
-            Question.objects.get(id=int('question_id'))
+            Question.objects.get(id=int('question_id'),active=2)
         except Exception as e:
             status = 0
             return Response({'status': status, 'msg': 'Error while fetching question', 'traceback_error': e.message})
@@ -887,12 +935,11 @@ class GetQuestionOptions(APIView):
         status = 2
         choice_list = []
         try:
-            question = Question.objects.get(id=int(question_id))
-            choice_list = Choice.objects.filter(
-                active=2, question=question).values('id', 'text')
+            question = Question.objects.get(id=int(question_id),active=2)
+            choice_list = Choice.objects.filter(question=question).values('id', 'text','active')
             for c, cl in enumerate(choice_list):
                 choice_list[c]['skip_question'] = Choice.objects.get(
-                    id=cl.get('id')).skip_question.all().ids()
+                    id=cl.get('id'),active=2).skip_question.all().ids()
             maincategory = [{"BF":"Beneficiary","FT":"Facility"}] ## capture type of beneficairy in question - from (added newly)
             subcategory = []
             subs = {}
@@ -902,7 +949,7 @@ class GetQuestionOptions(APIView):
             main = None
             sub = None
             if question.master_choice == True:
-                mchoice = MasterChoice.objects.get(question=question)
+                mchoice = MasterChoice.objects.get(question=question,question__active=2)
                 main = mchoice.master_type
                 sub = mchoice.code ## capture type of beneficairy in question - to
                 
@@ -935,7 +982,7 @@ class GetOption(generics.RetrieveUpdateAPIView):
     lookup_field = 'id'
 
     def get(self, request, id):
-        choice = Choice.objects.get(id=int(id))
+        choice = Choice.objects.get(id=int(id),active=2)
         choice_attr = {}
         choice_attr['question'] = str(choice.question.id)
         choice_attr['text'] = choice.text
@@ -1107,14 +1154,19 @@ def get_user_partner(u_id):
             return []
 
 def get_user_partner_list(u_id):
-    partner = UserRoles.objects.get(user__id=u_id).partner
-    if partner:
-        return [partner]
+    user = User.objects.get(id = u_id)
+    if user.is_superuser:
+        partner = Partner.objects.filter(active=2)
+        return partner
     else:
-        try:
-            return UserPartnerMapping.objects.get(user__id=u_id).partner.filter(active=2).all()
-        except:
-            return []
+        partner = UserRoles.objects.get(user__id=u_id).partner
+        if partner:
+            return [partner]
+        else:
+            try:
+                return UserPartnerMapping.objects.get(user__id=u_id).partner.filter(active=2).all()
+            except:
+                return []
 
 def check_if_previous_is_empty(sid, cluster, cid):
     survey = Survey.objects.get(id=sid)
@@ -1142,15 +1194,16 @@ def check_if_previous_is_empty(sid, cluster, cid):
 def copy_get_last_periodicity_date(sid):
     survey = Survey.objects.get(id=sid)
     calling_methods = {'3': month_range(get_last_month_date()),
-                       '4': get_last_quarter_dates(datetime.now()),
-                       '5': get_last_half_yearly_dates(datetime.now()),
+                       '4': get_last_quarter_dates(datetime.datetime.now()),
+                       '5': get_last_half_yearly_dates(datetime.datetime.now()),
                        '6': get_last_yearly_months()}
     dates = calling_methods.get(survey.piriodicity)
-    last_date = datetime.strptime(dates.get('last_date').strftime(
+    last_date = datetime.datetime.strptime(dates.get('last_date').strftime(
         '%Y-%m-%d') + " 0:0:0.1000", "%Y-%m-%d %H:%M:%S.%f")
     return last_date
 
 def get_last_periodicity_date(sid):
+    import datetime
     survey = Survey.objects.get(id=sid)
     calling_methods = {'3':CustomDates().previous_month_days(),
                        '4':CustomDates().get_fy_last_quarter(int(FY_YEAR)),
@@ -1158,7 +1211,7 @@ def get_last_periodicity_date(sid):
                        '6':CustomDates().fy_dates(int(FY_YEAR)-1)
                        }
     dates = calling_methods.get(survey.piriodicity)
-    last_date = datetime.strptime(dates.get('end_date').strftime('%Y-%m-%d')+" 00:00:00.1000","%Y-%m-%d %H:%M:%S.%f")
+    last_date = datetime.datetime.strptime(dates.get('end_date').strftime('%Y-%m-%d')+" 00:00:00.1000","%Y-%m-%d %H:%M:%S.%f")
     return last_date
 
 def get_keys_from_cluster(cluster=None):
@@ -1181,19 +1234,24 @@ class GetUserPartner(APIView):
             return Response({})
 
 class MasterChoiceSearch(APIView):
-    def get(self,request):
+    def get(self,request , cluster = None):
         data = []
         try:
             value = request.GET.get('key')
-            partner = UserRoles.objects.get(user_id=int(request.GET.get('user_id'))).partner.id
-            ques = Question.objects.get(id=request.GET.get('qid'))
+            partner = UserRoles.objects.get(user__id=int(request.GET.get('user_id'))).partner.id
+            ques = Question.objects.get(id=request.GET.get('qid'),active=2)
             if ques.master_choice == True:
-                master = MasterChoice.objects.get(question_id=ques.id)
+                master = MasterChoice.objects.get(question_id=ques.id,question__active=2)
                 if master.master_type == "FT":
                     data = [{"id":i.id, "text": i.name } \
                     for i in Facility.objects.filter(partner_id=partner,name__icontains=value,facility_type_id=int(master.code))]
                 elif master.master_type == "BF":
-                    data = [{"id":i.id, "text": i.name } \
+                    if cluster:
+                        cluster_data = eval(cluster)[0]
+                        beneficiary_id = request_data.get('beneficiary').get('id')
+                        data = [{"id":i.id, "text": i.name }for i in Beneficiary.objects.filter(partner_id=partner,name__icontains=value,beneficiary_type_id=int(master.code) , parent_id = beneficiary_id)]
+                    else:
+                        data = [{"id":i.id, "text": i.name } \
                     for i in Beneficiary.objects.filter(partner_id=partner,name__icontains=value,beneficiary_type_id=int(master.code))]
             else:
                 data = []
@@ -1201,3 +1259,57 @@ class MasterChoiceSearch(APIView):
 	    msg = str(e.message)	
             return Response({'status': 0,'messge':msg,'result':data})
         return Response({'status': 2,'messge':'Successfully Retreived','result':data})
+        
+        
+    
+from ccd.settings import DATABASES
+def famly_info(sql):
+    conn = psycopg2.connect(database=DATABASES.get('default').get('NAME'),user=DATABASES.get('default').get('USER'),password=DATABASES.get('default').get('PASSWORD'),host=DATABASES.get('default').get('HOST'))#ccd_demo29oct
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    nofam = cursor.fetchall()
+    conn.close()
+    return nofam
+
+class profileViewAndroidApp(APIView):
+    serializer_class =  ProfileViewSerializer
+    
+    def post(self , request):
+        modified_on = ''
+        try:
+            modified_on = request.data['modified_dates']
+        except:
+            pass
+        date_object = convert_string_to_date(modified_on)
+        if date_object is None:
+            p = ProfileViewSerializer(ProfileView.objects.filter(partner_id = request.POST.get('partner_id')).order_by('modified')[:500],many=True)
+        else:
+            p = ProfileViewSerializer(ProfileView.objects.filter(modified__gt=date_object , partner_id = request.POST.get('partner_id')).order_by('modified')[:500],many=True)
+       
+        
+        return JsonResponse({'status':2 , 'res' : p.data})
+        
+
+ 
+class ProfileViewWebApp(APIView):
+    def get(self , request , cluster):
+       #the request.POST = [{"beneficiary":{"beneficiary_type_id":2,"id":118029}}]
+        cluster_data = eval(cluster)[0]
+        request_data = cluster_data
+        res = []
+        if request_data.get('beneficiary'):
+            beneficiary_id = request_data.get('beneficiary').get('id')
+            p = ProfileView.objects.filter(ben_fac_loc_id = beneficiary_id)
+            if len(p) == 0:
+                res = []
+            else:
+                profile_info = p[0].profile_info
+                for k,v in profile_info.items():
+                    print k
+                    dic = {}
+                    if v is not None and str(k).isdigit():
+                        dic.update({'label' : Question.objects.get(id = int(str(k))).text})
+                        dic.update({'label_response' : v})
+                        res.append(dic)
+            
+        return Response({'status':2,'res':res})

@@ -19,6 +19,7 @@ from math import ceil
 from masterdata.views import pg_size
 from django.db.models import ForeignKey
 import uuid
+from survey.models import *
 from survey.capture_sur_levels import convert_string_to_date
 
 
@@ -171,6 +172,17 @@ class FacilityTypeListing(CreateAPIView):
         response = {}
         response = [{'id': i.id, 'name': i.name, 'sub_category':get_facility_subcategory(i.id)}
                     for i in MasterLookUp.objects.filter(parent__slug='facility-type')]
+        for i in response:
+            s = SurveyDataEntryConfig.objects.filter(object_id1 = i.get('id')).values_list('survey_id')
+            q =  Question.objects.filter(active = 2 , is_profile = True)
+            qlist = [] 
+            for j in s:
+                quesid = q.filter(block__survey__id = j[0]).values_list('id')
+                if quesid:
+                    for k in quesid:
+                        qlist.append(str(k[0]))
+            i['qids'] = ','.join(qlist)
+            i['fields'] = ','.join(['name','age','gender'])
         return Response(response)
 
 
@@ -353,19 +365,25 @@ class FacilityListing(APIView):
         response = {}
         model = self.get_model_class()
         page_no = self.get_pagination_id()
-
+        
         try:
             partner_id = request.data['partner_id']
         except:
             partner_id = None
         all_fields = [i for i in model._meta.get_all_field_names()]
         if key == 'beneficiarytype':
+            nm = request.POST.get('name')
             object_list = model.objects.filter(
                 active=2).exclude(id__in=[1]).order_by('-id')
+            
         elif key == 'facility' and partner_id:
-            object_list = model.objects.filter(active=2, partner_id=partner_id).order_by('-id')
+                object_list = model.objects.filter(active=2, partner_id=partner_id).order_by('-id')
         else:
             object_list = model.objects.filter(active=2).order_by('-id')
+        if request.POST.get('name'):
+            object_list = object_list.filter(name__icontains=request.POST.get('name'))
+        if request.POST.get('btype'):
+            object_list = object_list.filter(facility_type_id=request.POST.get('btype'))
         data = []
         for obj in object_list:
             objdict = {}
@@ -549,3 +567,16 @@ class FacilityWtPaginationListing(APIView):
         response.update({'data': data, 'status': 2,
                          'message': 'Successfully Retrieved'})
         return Response(response)
+
+
+
+class FacilityTypeList(APIView):
+    """
+    Retrieve, facility_type list.
+    """
+
+    def get(self, request):
+        natur = list(set(Facility.objects.all().values_list('facility_type_id',flat=True)))
+        obj = MasterLookUp.objects.filter(id__in=natur).values('id','name')
+        return Response({'status':2,'data':obj})
+

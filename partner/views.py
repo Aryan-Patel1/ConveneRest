@@ -438,11 +438,21 @@ class PartnerList(ListAPIView):
 
     def get(self, request):
 
+        queryset = self.get_queryset().order_by('-id')
+        if self.request.GET.get('name'):
+            queryset = queryset.filter(active=2,name__icontains=self.request.GET.get('name'))
+        if self.request.GET.get('cryadmin'):
+            queryset = queryset.filter(active=2,partner_id__icontains=self.request.GET.get('cryadmin'))
+        if self.request.GET.get('stateid'):
+            queryset = queryset.filter(active=2,state_id=self.request.GET.get('stateid'))
+        if self.request.GET.get('natureid'):
+            queryset = queryset.filter(active=2,nature_of_partner_id=self.request.GET.get('natureid'))
+            
         response = [{'id': part.id, 'name': part.name, 'partner_id': part.partner_id,
                      'active': part.active,
                      'program_id': self.get_program(part.id), 'project_id': self.get_project(part.id),
-                     'project_name': part.get_project_name()}
-                    for part in self.get_queryset().order_by('-id')]
+                     'project_name': part.get_project_name(),'state':part.state.name if part.state else '','nature':part.nature_of_partner.name if part.nature_of_partner else ''}
+                    for part in queryset]
         get_page = ceil(float(len(response)) / float(pg_size))
         paginator = CustomPagination()
         result_page = paginator.paginate_queryset(response, request)
@@ -1286,3 +1296,18 @@ def PartnerDatabase(request):
         path_file = ""
     return JsonResponse({'status':2,'zipfile':path_file})
 
+
+
+class NatureOfPartnerList(APIView):
+    """
+    Retrieve, nature_of_partner list.
+    """
+
+    def get(self, request):
+        natur = list(set(Partner.objects.all().values_list('nature_of_partner_id',flat=True)))
+        obj = MasterLookUp.objects.filter(id__in=natur).values('id','name')
+        return Response({'status':2,'data':obj})
+
+
+
+        

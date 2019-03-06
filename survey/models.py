@@ -265,6 +265,17 @@ class Survey(BaseContent):
         q_id = Question.objects.filter(active=2,display=True,block__survey__id=self.id).values_list('id',flat=True)
         return ",".join([str(i) for i in q_id])
 
+    def get_survey_rule_engine(self):
+        reobj = {}
+        try:
+            obj = DetailedUserSurveyMap.objects.get_or_none(survey_id=self,active=2)
+            if obj and obj.rule_engine:
+                reobj = obj.rule_engine
+            else:
+                reobj = ''
+        except:
+            reobj = {'Please check survey rule engine config'}
+        return reobj
 
 class Block(BaseContent):
     #                                                          Block
@@ -729,10 +740,15 @@ class Question(BaseContent):
         if self.block.survey.is_auto_fill:
             auto_fill['form_id']=self.block.survey.id
             auto_fill['question_ids'] = str(self.id)
+            auto_fill['operator'] = self.get_auto_operator()
+            if not auto_fill['question_ids']:
+                auto_fill = {}
             return auto_fill
         elif self.block.survey.survey_auto_fill:
             auto_fill['form_id'] = self.block.survey.survey_fill.id
             auto_fill['question_ids'] = ",".join([str(i) for i in self.get_auto_fill_questions()])
+            if not auto_fill['question_ids']:
+                auto_fill = {}
             return auto_fill
         elif MasterChoice.objects.filter(question=self,active=2).exists():
 	    mstyp = {"BF":1,"FT":0}	
@@ -740,11 +756,17 @@ class Question(BaseContent):
             auto_fill['isMultiSel'] = 1 if self.master_choice == True and self.qtype=='C' else 0
             auto_fill['isBen'] = mstyp.get(mastr_ch.master_type,'') if mastr_ch else ''
             auto_fill['typeCode'] = str(mastr_ch.code)  if mastr_ch else ""
+            auto_fill['is_specific'] = 1 if self.master_choice == True and self.qtype=='T' else 0
             return auto_fill
         else:
             auto_fill['form_id'] = self.block.survey.id
             auto_fill['question_ids'] = ",".join([str(i) for i in self.get_auto_fill_questions()])
+            auto_fill['operator'] = self.get_auto_operator()
+            if not auto_fill['question_ids']:
+                auto_fill = {}
             return auto_fill
+                
+            
         return {'form_id':0,'question_ids':""}
     
     
@@ -766,11 +788,20 @@ class Question(BaseContent):
 
     def get_auto_fill_questions(self):
         try:
-            obj = Questionautofill.objects.filter(question=self).latest('id').question_auto_fill.ids()
+            obj = Questionautofill.objects.filter(question=self).latest('id')
+            obj = obj.question_sequence.split(',') if obj.question_sequence else []
         except:
             obj = []
         return obj
-
+    
+    def get_auto_operator(self):
+        try:
+            obj = QuestionValidation.objects.get(question = self)
+            m = '+' + ',' + str(obj.validation_condition)
+        except:
+            m = ''
+        return m
+        
     class Meta:
         #                                                         Question
         # Don't create a table in database
@@ -790,6 +821,7 @@ class MasterChoice(BaseContent):
 class Questionautofill(BaseContent):
     question = models.ForeignKey(Question, blank=True, null=True,related_name="autofill_parent_question")
     question_auto_fill = models.ManyToManyField(Question,blank=True,symmetrical=False,related_name="autofillquestion")
+    question_sequence = models.CharField(max_length=500, blank=True, null=True)
     
     def __unicode__(self):
         return str(self.id)
@@ -1325,7 +1357,9 @@ class SurveySkip(BaseContent):
     skip_level = models.CharField(max_length=255, blank=True, null=True)
 
 VALIDATION_CONDITIONS = (('>','Greather Than'),('<','Less Than'),
-     ('>=','Greather Than Equal'),('<=','Less Than Equal'),('==','Equals'),('!=','Not Equal'))
+     ('>=','Greather Than Equal'),('<=','Less Than Equal'),('==','Equals'),('!=','Not Equal'),
+     ('+','Addition'),('-','Subtraction'),('*','Multiplication'),('/','Division'),
+     ('past','Past Date'),('current','Current Date'),('future','Future Date'),('any date','Any Date'))
 class QuestionValidation(BaseContent):
     question = models.ForeignKey(Question)
     validation_type = models.CharField(

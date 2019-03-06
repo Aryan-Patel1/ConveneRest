@@ -184,7 +184,7 @@ def questionlist(request):
         quest_list = []
         flag = ""
         updatedtime = request.POST.get("updatedtime")
-        questions = Question.objects.filter(is_grid=False)
+        questions = Question.objects.filter(block__survey__id = 73 ,is_grid=False)
 
         if updatedtime:
             updated = convert_string_to_date(updatedtime)

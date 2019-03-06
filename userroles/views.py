@@ -32,6 +32,7 @@ from .ad_apis import update_ad
 from ad_auth import *
 from menu_decorators import *
 from rest_framework import permissions
+from django.db.models import Q
 
 pg_size = REST_FRAMEWORK.get('PAGE_SIZE')
 
@@ -200,8 +201,15 @@ class Userlist(APIView):
 
     @classmethod
     def get(cls, request, format=None):
+        
         try:
-            userroles = UserRoles.objects.filter(active=2)
+            userroles = UserRoles.objects.select_related('user__id' , 'user__first_name' , 'user__last_name' , 'user__email' , 'organization_unit__name' , 'organization_unit__organization_level').filter(active=2)
+            if request.GET.get('name'):
+                nm = request.GET.get('name')
+                userroles = userroles.filter(Q(user__username__icontains=nm)|Q(user__first_name__icontains=nm)|Q(user__last_name__icontains=nm))
+            if request.GET.get('roleid'):
+                userroles = userroles.filter(role_type__id=request.GET.get('roleid'))
+            
             response = [{'user_id': i.user.id,
                          'roles_id': i.id,
                          'first_name': i.user.first_name,
@@ -580,15 +588,15 @@ class UserDetailView(APIView):
                 'organization_unit': int(userobj.organization_unit.id) if userobj else '',
                 'roles': [int(j.id) for j in userobj.role_type.all()] if userobj else [],
                 'mobile_number': userobj.mobile_number if userobj else '',
-                'company_name': empdetail.company_name if empdetail.company_name else '',
-                'designation': int(empdetail.designation.id) if empdetail.designation else '',
-                'region': int(empdetail.region.id) if empdetail.region else '',
-                'reporting_to': int(empdetail.reporting_to.id) if empdetail.reporting_to else '',
+                'company_name': empdetail.company_name if empdetail and empdetail.company_name else '',
+                'designation': int(empdetail.designation.id) if empdetail and empdetail.designation else '',
+                'region': int(empdetail.region.id) if empdetail and empdetail.region else '',
+                'reporting_to': int(empdetail.reporting_to.id) if empdetail and empdetail.reporting_to else '',
                 'address': userobj.get_address() if userobj else {},
                 'emergency_name': emergency_detail.name if emergency_detail else '',
                 'relationship': emergency_detail.relationship if emergency_detail else '',
                 'emergency_address': emergency_detail.get_emergency_address() if emergency_detail else main_address,
-                'contacts': emergency_detail.get_contact_details(), }
+                'contacts': emergency_detail.get_contact_details() if emergency_detail else '' }
         except Exception as e:
             response = {'key': 0, 'msg': "Not Registered",
                         'pages': '1', 'error_msg': e.message}
@@ -753,11 +761,11 @@ class GetUserRegionalPartners(APIView):
     def get(self,request,user_id):
         partner_list = []
         tagged_partners = []
-        try:
+        try: 
             UserRoles.objects.get(user_id=user_id)
             edr = EmploymentDetail.objects.get(user_id=user_id).region
             if edr.slug == 'national-ho':
-                partner_list = list(Partner.objects.filter(active=2).values('id','name'))
+                partner_list = list(Partner.objects.filter(active=2,state__id__in=eval(request.GET.get('sid'))).values('id','name'))
             else:
                 boundary = Boundary.objects.filter(region__slug=edr.slug).values_list('id',flat=True)
                 partner_list = list(Partner.objects.filter(state__id__in=boundary).values('id','name'))
